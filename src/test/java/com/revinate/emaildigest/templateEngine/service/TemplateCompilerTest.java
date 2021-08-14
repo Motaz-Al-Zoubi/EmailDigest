@@ -2,18 +2,9 @@ package com.revinate.emaildigest.templateEngine.service;
 
 import org.junit.jupiter.api.Test;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.revinate.emaildigest.contact.model.Contact;
-
-
-@AllArgsConstructor
-@Data
-class Scope {
-    private Contact contact;
-}
 
 public class TemplateCompilerTest {
 
@@ -21,6 +12,15 @@ public class TemplateCompilerTest {
 
     @Test
     void shouldReplaceVariableWithValue() throws Exception {
+        class Scope {
+            private Contact contact;
+            public Scope(Contact contact) {
+                this.contact = contact;
+            }
+            public Contact getContact() {
+                return this.contact;
+            }
+        }
         var scope = new Scope(new Contact());
         scope.getContact().setFirstName("Motaz");
         var greeting = templateCompiler.compile("templates/greeting.mustache", scope);
