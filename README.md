@@ -1,67 +1,74 @@
 # Email Digest Exercise
+## Overview
+I have implemented the digest service using Template Design Pattern (TDP), because of the following reasons:
+- Daily digest, Weekly digest or even any Periodic Digest (Monthly, Yearly) is using the same algorithm for sending emails to contacts, the only difference is the email subject, email title, and the call to the Deal service, and using TDP in this case will maximize the `Don't Repeat Yourself Design Principle`
+- I want to make the code open for extension closed for modification so I abstract all the similar logic in the abstract class and name it `PeriodicDigest`, then I abstract the differences by using three abstract methods that should be implemented by the sub-classes (DailyDigest, WeeklyDigest).
+Then given a new future requirement for monthly digest for example, will be done simply by adding a new class called MonthlyDigest that extends PeriodicDigest and implement the abstract methods.
+Here is a code snippet from the `PeriodicDigest` class.
+```Java
+    public void send() {
+        String emailSubject = getEmailSubject();
+        String title = getEmailTitle();
 
-This exercise is to test your coding style, best practices, design patter and design principles.
+        try {
+            var pagesIterator =  contactService.getPaginatedContacts(PAGE_SIZE);
+            while (pagesIterator.hasNext()) {
+                List<Contact> contactsPage = pagesIterator.next();
+                for (Contact contact : contactsPage) {
+                    List<Deal> deals = getDealsByEmail(contact.getEmail());
+                    Digest digest = new Digest(title, contact, deals);
+                    String emailBody = compiler.compile("templates/digest.mustache", digest);
+                    Email email = new Email(emailSubject, emailBody);
+                    emailService.sendEmail(email, contact.getEmail());
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error while trying to send the digests", e);
+        }
+    }
+    protected abstract String getEmailTitle();
 
-We hope you can spend about two hours on this project. If you can finish faster — great! If not, limit yourself and don't spend much longer than 2 hours MAX.
+    protected abstract String getEmailSubject();
 
-## Description
-
-We want you to build a service in charge of sending 2 email digests containing deals to our contacts.
-
-The first email digest should be sent daily with the format:
-```text
-Subject: Your deals of the day - Don't miss out!
-Body:
-Hi {contact firstName},
-
-Today again! Your amazing deals:
-
-{for all deals}
-- {deal name} - {deal percentage discount} off on {deal originalPrice}
-  {deal description}
-{end for}
+    protected abstract List<Deal> getDealsByEmail(String email);
 ```
+- I have used mustache (a Logic-less template engine) for building the emails templates. all the templates are in this [folder](./src/main/resources/templates)
+## Class Diagram
+![](./attachments/ClassDigram.png)
 
-The second email digest should be sent weekly with the format:
-```text
-Subject: Your deals of the week - Get Ready!
-Body:
-Hi {contact firstName},
 
-Check what's coming!
+## What could be improved
+- I need to add a circle ci configuration file that will do the following:
+  - Run the test suite on each commit to whatever branch
+  - Build the project as a docker image and push this image to some docker registry like docker hub for example, with assumption that we are deploying our apps using containers in production. This build will run only if we push to the master branch. I have did that in a different project of mine you can take a look at it from this [link](https://github.com/Motaz-Al-Zoubi/auth-microservice), this project is built on NodeJs.
+- I would add [JaCoCo Java Code Coverage Library](https://www.eclemma.org/jacoco/) that will measure the code coverage of the test suite and make sure that the code coverage is more than **95%**, then add this check to circle ci.
 
-{for all deals}
-- {deal name} - {deal percentage discount} off on {deal originalPrice}
-  {deal description}
-{end for}
-```
+## The Bonuses
 
-## What is provided
+Given that huge scale, there are some concerns on the current design that we need to handle:
+- Email services usually has some sort of rate limiting then it will not allow us to send that huge amount of emails within small window time.
+- The current design supports sequential execution which will not scale well because that means this code is going to be run on a single machine and that means we can't handle the huge scale needed.
+- If failure happens (which will happen for sure :D) the current design doesn't support any sort of retry mechanisms then that could make a negative impact to our clients because they are not receiving their digest.
+- The current schedular sleeps all the day and then at specific time wakes up and send all the emails at once, however, a better approach is to utilize the whole day (assuming that the bushiness doesn't have a concern regarding in which specific time of the day we need to send the digest)
 
-You have a functioning Spring application with the following packages:
+### The right approach for handling this huge scale (For simplicity I will talk about daily digest, and of course weekly should be handled the same)
+I will build two micro-services so that I can scale them **independently**.
+- Scheduler micro-service (Publisher)
+  This service is responsible for running **on each minute of the day** and use the contacts service to get a page from the contacts, loop over it and for each contact send a message to a message broker like (`Kafka`, `Amazon SQS` or `Google PubSub`), this message will contain the needed information to send a digest to a specific destination.
+- Notification micro-service (Subscriber)
+  This service is responsible for consuming the messages from the message broker and do the actual digest sending, in this scenario if a failure happens then simply the message broker will retry as long as it doesn't receive an acknowledgment from the consumer. (Which means more reliability and fault tolerance).
 
-* contact: Providing a service to retrieve paginated contacts
-* deal: Providing a service to retrieve daily and weekly deals for a given email
-* email: Providing a service to send an email to a destination (it only logs the email sent as we don't want to actually send emails)
-* scheduler: Providing a component with the scheduled method
+#### What is the value of having Notification micro-service?
+- Let us assume that the message broker has over-load of messages then simply we can deploy multiple instances of the Notification micro-service to handle that load, which means more scalability.
+- Horizontal scaling will guarantee parallel execution in commodity hardware.
+- Having this micro-service in different service than the service that handles the scheduling makes it easy to scale this service independently, because single instance from the schedular could be enough, however, we need multiple instances from the Notification micro-service
+- If we are using `Google PubSub` and `Google App Engine` as our production infrastructure then I will use the `Push` mechanism of the Google PubSub that will push the messages it has to a webhook, and this webhook is part of the Notification micro-service and deployed as an AppEngine service that could automatically scale up or down according to the traffic on this service. (Which will optimize the cost).
 
-_**!! Those services come with a set of dummy data and were not implemented following all the best practices and patterns but are here for you to have a base. !!**_
+#### How the Scheduler micro-service will know the page index for each minute of the day?
+This simply could be done using `Redis` as caching for the last page index that we have scheduled before.
 
-## What is expected
+#### Why do we run Scheduler micro-service per each minute of the day?
+That will distribute the load through out the minutes of the day instead of pushing all the data at certain minute of the day which will not be applicable given the current scale.
 
-Write the code necessary to build and send those 2 digests to our contacts.
-You can change the project structure and add other libraries as you want.
-
-### Bonuses
-
-In case the contact service returns millions of contacts, what would you change to handle the scaling.
-
-## Reference Documentation
-
-For further reference, please consider the following sections:
-
-* [Official Gradle documentation](https://docs.gradle.org)
-* [Spring Boot Gradle Plugin Reference Guide](https://docs.spring.io/spring-boot/docs/2.5.2/gradle-plugin/reference/html/)
-* [Spring for Apache Kafka](https://docs.spring.io/spring-boot/docs/2.5.2/reference/htmlsingle/#boot-features-kafka)
-* [Spring Configuration Processor](https://docs.spring.io/spring-boot/docs/2.5.2/reference/htmlsingle/#configuration-metadata-annotation-processor)
-* [Mustache](https://docs.spring.io/spring-boot/docs/2.5.2/reference/htmlsingle/#boot-features-spring-mvc-template-engines)
+#### System Architecture Diagram
+![](./attachments/Scalable%20System%20Design.png)
