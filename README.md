@@ -40,8 +40,7 @@ Here is a code snippet from the `PeriodicDigest` class.
 ## What could be improved
 - I need to add a circle ci configuration file that will do the following:
   - Run the test suite on each commit to whatever branch
-  - Build the project as a docker image and push this image to some docker registry like docker hub for example, with assumption that we are deploying our apps using containers in production.
-  - I have did that in a different project of mine you can take a look at it from this [link](https://github.com/Motaz-Al-Zoubi/auth-microservice), this project is built on NodeJs.
+  - Build the project as a docker image and push this image to some docker registry like docker hub for example, with assumption that we are deploying our apps using containers in production. This build will run only if we push to the master branch. I have did that in a different project of mine you can take a look at it from this [link](https://github.com/Motaz-Al-Zoubi/auth-microservice), this project is built on NodeJs.
 - I would add [JaCoCo Java Code Coverage Library](https://www.eclemma.org/jacoco/) that will measure the code coverage of the test suite and make sure that the code coverage is more than **95%**, then add this check to circle ci.
 
 ## The Bonuses
@@ -55,13 +54,15 @@ Given that huge scale, there are some concerns on the current design that we nee
 ### The right approach for handling this huge scale (For simplicity I will talk about daily digest, and of course weekly should be handled the same)
 I will build two micro-services so that I can scale them **independently**.
 - Scheduler micro-service (Publisher)
-  This service is only responsible for running **each minute of the day** and use the contacts service to get a page from the contacts, loop over it and for each contact send a message to a message broker like (`Kafka`, `Amazon SQS`, `Google PubSub`), this message will contain the needed information to send a digest to a specific destination.
+  This service is only responsible for running **on each minute of the day** and use the contacts service to get a page from the contacts, loop over it and for each contact send a message to a message broker like (`Kafka`, `Amazon SQS` or `Google PubSub`), this message will contain the needed information to send a digest to a specific destination.
 - Notification micro-service (Subscriber)
   This service is responsible for consuming the messages from the message broker and do the actual digest sending, in this scenario if a failure happens then simply the message broker will retry as long as it doesn't receive an acknowledgment from the consumer. (Which means more reliability and fault tolerance).
 
 #### What is the value of having Notification micro-service?
 - Let us assume that the message broker has over-load of messages then simply we can deploy multiple instances of the Notification micro-service to handle that load, which means more scalability.
-- If we are using Google PubSub and Google App Engine as an infrastructure then I will use the Push mechanism for the google PubSub that will push the messages it has to a webhook, and this webhook is part of the Notification micro-service and deployed as an AppEngine service that could automatically scale up or down according to the traffic on this webhook. (Which will optimize the cost).
+- Horizontal scaling will guarantee parallel execution.
+- Having this micro-service in different service than the service that handles the scheduling makes it easy to scale this service independently, because we need only single instance from the schedular, however, we need multiple instances from the Notification micro-service
+- If we are using `Google PubSub` and `Google App Engine` as our production infrastructure then I will use the `Push` mechanism of the Google PubSub that will push the messages it has to a webhook, and this webhook is part of the Notification micro-service and deployed as an AppEngine service that could automatically scale up or down according to the traffic on this webhook. (Which will optimize the cost).
 
 #### How the Scheduler micro-service will know the page index for each minute of the day?
 This simply could be done using `Redis` as caching for the last page index that we have scheduled before.
