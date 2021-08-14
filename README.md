@@ -47,22 +47,22 @@ Here is a code snippet from the `PeriodicDigest` class.
 
 Given that huge scale, there are some concerns on the current design that we need to handle:
 - Email services usually has some sort of rate limiting then it will not allow us to send that huge amount of emails within small window time.
-- Having the same code I have implemented here will not work efficiently for that huge scale, because it will take so much time for the sequential execution that could not be executed in parallel in the current design, and it may has problems with the machine that will run the code because of the limitation of the machine's resources.
-- If failure happens (which will happen for sure :D) the current architecture doesn't support any sort of retry mechanisms then that could make a negative impact to our clients because they are not receiving their digest.
+- The current design supports sequential execution which will not scale well because that means this code is going to be run on a single machine and that means we can't handle the huge scale needed.
+- If failure happens (which will happen for sure :D) the current design doesn't support any sort of retry mechanisms then that could make a negative impact to our clients because they are not receiving their digest.
 - The current schedular sleeps all the day and then at specific time wakes up and send all the emails at once, however, a better approach is to utilize the whole day (assuming that the bushiness doesn't have a concern regarding in which specific time of the day we need to send the digest)
 
 ### The right approach for handling this huge scale (For simplicity I will talk about daily digest, and of course weekly should be handled the same)
 I will build two micro-services so that I can scale them **independently**.
 - Scheduler micro-service (Publisher)
-  This service is only responsible for running **on each minute of the day** and use the contacts service to get a page from the contacts, loop over it and for each contact send a message to a message broker like (`Kafka`, `Amazon SQS` or `Google PubSub`), this message will contain the needed information to send a digest to a specific destination.
+  This service is responsible for running **on each minute of the day** and use the contacts service to get a page from the contacts, loop over it and for each contact send a message to a message broker like (`Kafka`, `Amazon SQS` or `Google PubSub`), this message will contain the needed information to send a digest to a specific destination.
 - Notification micro-service (Subscriber)
   This service is responsible for consuming the messages from the message broker and do the actual digest sending, in this scenario if a failure happens then simply the message broker will retry as long as it doesn't receive an acknowledgment from the consumer. (Which means more reliability and fault tolerance).
 
 #### What is the value of having Notification micro-service?
 - Let us assume that the message broker has over-load of messages then simply we can deploy multiple instances of the Notification micro-service to handle that load, which means more scalability.
-- Horizontal scaling will guarantee parallel execution.
-- Having this micro-service in different service than the service that handles the scheduling makes it easy to scale this service independently, because we need only single instance from the schedular, however, we need multiple instances from the Notification micro-service
-- If we are using `Google PubSub` and `Google App Engine` as our production infrastructure then I will use the `Push` mechanism of the Google PubSub that will push the messages it has to a webhook, and this webhook is part of the Notification micro-service and deployed as an AppEngine service that could automatically scale up or down according to the traffic on this webhook. (Which will optimize the cost).
+- Horizontal scaling will guarantee parallel execution in commodity hardware.
+- Having this micro-service in different service than the service that handles the scheduling makes it easy to scale this service independently, because single instance from the schedular could be enough, however, we need multiple instances from the Notification micro-service
+- If we are using `Google PubSub` and `Google App Engine` as our production infrastructure then I will use the `Push` mechanism of the Google PubSub that will push the messages it has to a webhook, and this webhook is part of the Notification micro-service and deployed as an AppEngine service that could automatically scale up or down according to the traffic on this service. (Which will optimize the cost).
 
 #### How the Scheduler micro-service will know the page index for each minute of the day?
 This simply could be done using `Redis` as caching for the last page index that we have scheduled before.
