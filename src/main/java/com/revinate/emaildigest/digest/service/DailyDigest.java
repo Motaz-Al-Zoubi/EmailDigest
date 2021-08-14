@@ -6,15 +6,17 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class DailyDigest extends PeriodicDigest {
+    public final static String EMAIL_TITLE = "Today again! Your amazing deals:";
+    public final static String EMAIL_SUBJECT = "Your deals of the day - Don't miss out!";
 
     @Override
     protected String getEmailTitle() {
-        return "Today again! Your amazing deals:";
+        return EMAIL_TITLE;
     }
 
     @Override
     protected String getEmailSubject() {
-        return "Your deals of the day - Don't miss out!";
+        return EMAIL_SUBJECT;
     }
 
     @Override

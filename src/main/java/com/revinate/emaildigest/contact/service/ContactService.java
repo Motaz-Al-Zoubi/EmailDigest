@@ -12,7 +12,7 @@ import java.util.stream.IntStream;
 
 @Component
 public class ContactService {
-    static final int TOTAL_NB_CONTACTS = 12345;
+    public static final int TOTAL_NB_CONTACTS = 12345;
     private final List<Contact> contactList;
 
     public ContactService() {

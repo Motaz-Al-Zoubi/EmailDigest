@@ -1,6 +1,5 @@
 package com.revinate.emaildigest.digest.service;
 
-import java.io.IOException;
 import java.util.List;
 
 import com.revinate.emaildigest.contact.model.Contact;
@@ -14,6 +13,9 @@ import com.revinate.emaildigest.templateEngine.service.TemplateCompiler;
 
 import org.springframework.beans.factory.annotation.Autowired;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public abstract class PeriodicDigest {
     static final int PAGE_SIZE = 1000;
 
@@ -45,8 +47,8 @@ public abstract class PeriodicDigest {
                     emailService.sendEmail(email, contact.getEmail());
                 }
             }
-        } catch (IOException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
+            log.error("Error while trying to send the digests", e);
         }
     }
 

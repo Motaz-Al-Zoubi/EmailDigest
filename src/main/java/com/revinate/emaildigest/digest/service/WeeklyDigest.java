@@ -8,14 +8,17 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class WeeklyDigest extends PeriodicDigest {
+    public static final String EMAIL_TITLE = "Check what's coming!";
+    public static final String EMAIL_SUBJECT = "Your deals of the week - Get Ready!";
+
     @Override
     protected String getEmailTitle() {
-        return "Check what's coming!";
+        return EMAIL_TITLE;
     }
 
     @Override
     protected String getEmailSubject() {
-        return "Your deals of the week - Get Ready!";
+        return EMAIL_SUBJECT;
     }
 
     @Override
